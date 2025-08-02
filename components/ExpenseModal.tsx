@@ -280,6 +280,7 @@ export default function ExpenseModal() {
                   id="amount" 
                   step="0.01" 
                   required 
+                  inputMode="decimal"
                   value={amount}
                   onChange={handleAmountChange}
                 />
