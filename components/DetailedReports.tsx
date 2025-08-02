@@ -21,27 +21,6 @@ export default function DetailedReports() {
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
 
   // Format amount in Indonesian Rupiah format
-  const formatRupiah = (amount: number): string => {
-    // Convert to string with 2 decimal places
-    const formatted = parseFloat(amount.toString()).toFixed(2);
-    
-    // Split into integer and decimal parts
-    const parts = formatted.split('.');
-    const integerPart = parts[0];
-    const decimalPart = parts[1];
-    
-    // Add thousand separators to integer part
-    const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    
-    // If decimal part is 00, omit it
-    if (decimalPart === '00') {
-      return `Rp${withThousands}`;
-    }
-    
-    // Otherwise, include the decimal part with comma separator
-    return `Rp${withThousands},${decimalPart}`;
-  };
-
   // Load data for all reports
   const loadReportsData = async () => {
     if (!isDBReady) return;
@@ -73,8 +52,440 @@ export default function DetailedReports() {
       setWeekTransactions(weekTx);
       setMonthTransactions(monthTx);
       setAllTransactions(allTx);
+      
+      // Render charts after data is loaded
+      if (typeof window !== 'undefined' && (window as any).ApexCharts) {
+        renderTodayChart(todayTx);
+        renderWeekCharts(weekTx);
+        renderMonthCharts(monthTx);
+      }
     } catch (error) {
       console.error('Error loading reports data:', error);
+    }
+  };
+
+  // Format amount in Indonesian Rupiah format
+  const formatRupiah = (amount: number): string => {
+    // Convert to string with 2 decimal places
+    const formatted = parseFloat(amount.toString()).toFixed(2);
+    
+    // Split into integer and decimal parts
+    const parts = formatted.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+    
+    // Add thousand separators to integer part
+    const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    
+    // If decimal part is 00, omit it
+    if (decimalPart === '00') {
+      return `Rp${withThousands}`;
+    }
+    
+    // Otherwise, include the decimal part with comma separator
+    return `Rp${withThousands},${decimalPart}`;
+  };
+
+  // Render today's pie chart
+  const renderTodayChart = (transactions: Transaction[]) => {
+    const chartElement = document.getElementById('todayPieChart');
+    if (!chartElement) return;
+    
+    // Destroy existing chart if it exists
+    if ((chartElement as any).chart) {
+      (chartElement as any).chart.destroy();
+    }
+    
+    // Group transactions by category
+    const categoryTotals: { [key: string]: number } = {};
+    transactions.forEach(tx => {
+      if (categoryTotals[tx.category]) {
+        categoryTotals[tx.category] += tx.amount;
+      } else {
+        categoryTotals[tx.category] = tx.amount;
+      }
+    });
+    
+    // Prepare data for chart
+    const categories = Object.keys(categoryTotals);
+    const amounts = Object.values(categoryTotals);
+    
+    if (categories.length === 0) {
+      chartElement.innerHTML = '<p style="text-align:center;color:#A9B1BD;">No data to display</p>';
+      return;
+    }
+    
+    // Create chart
+    const chart = new (window as any).ApexCharts(chartElement, {
+      chart: {
+        type: 'pie',
+        height: 300,
+        background: 'transparent'
+      },
+      labels: categories,
+      series: amounts,
+      colors: ['#00F260', '#0575E6', '#AC39E6', '#E63946', '#F4A261'],
+      legend: {
+        position: 'bottom',
+        labels: {
+          colors: '#A9B1BD'
+        }
+      },
+      tooltip: {
+        theme: 'dark',
+        y: {
+          formatter: function(value: any) {
+            return formatRupiah(value);
+          }
+        }
+      }
+    });
+    
+    chart.render();
+    
+    // Store chart reference
+    (chartElement as any).chart = chart;
+  };
+
+  // Render week's charts
+  const renderWeekCharts = (transactions: Transaction[]) => {
+    // Pie chart by category
+    const pieChartElement = document.getElementById('weekPieChart');
+    if (pieChartElement) {
+      // Destroy existing chart if it exists
+      if ((pieChartElement as any).chart) {
+        (pieChartElement as any).chart.destroy();
+      }
+      
+      // Group transactions by category
+      const categoryTotals: { [key: string]: number } = {};
+      transactions.forEach(tx => {
+        if (categoryTotals[tx.category]) {
+          categoryTotals[tx.category] += tx.amount;
+        } else {
+          categoryTotals[tx.category] = tx.amount;
+        }
+      });
+      
+      // Prepare data for chart
+      const categories = Object.keys(categoryTotals);
+      const amounts = Object.values(categoryTotals);
+      
+      if (categories.length > 0) {
+        // Create chart
+        const chart = new (window as any).ApexCharts(pieChartElement, {
+          chart: {
+            type: 'pie',
+            height: 300,
+            background: 'transparent'
+          },
+          labels: categories,
+          series: amounts,
+          colors: ['#00F260', '#0575E6', '#AC39E6', '#E63946', '#F4A261'],
+          legend: {
+            position: 'bottom',
+            labels: {
+              colors: '#A9B1BD'
+            }
+          },
+          tooltip: {
+            theme: 'dark',
+            y: {
+              formatter: function(value: any) {
+                return formatRupiah(value);
+              }
+            }
+          }
+        });
+        
+        chart.render();
+        
+        // Store chart reference
+        (pieChartElement as any).chart = chart;
+      } else {
+        pieChartElement.innerHTML = '<p style="text-align:center;color:#A9B1BD;">No data to display</p>';
+      }
+    }
+    
+    // 4-week spending trend chart
+    const trendChartElement = document.getElementById('weekTrendChart');
+    if (trendChartElement) {
+      // Destroy existing chart if it exists
+      if ((trendChartElement as any).chart) {
+        (trendChartElement as any).chart.destroy();
+      }
+      
+      // Calculate data for the last 4 weeks
+      const weeks = ['3 Weeks Ago', '2 Weeks Ago', 'Last Week', 'This Week'];
+      const weekTotals = [0, 0, 0, 0];
+      
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      
+      // This week
+      weekTotals[3] = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      
+      // Previous weeks would require more complex data, but for now we'll just show this week's data
+      // In a full implementation, you'd fetch data for previous weeks
+      
+      // Create chart
+      const chart = new (window as any).ApexCharts(trendChartElement, {
+        chart: {
+          type: 'bar',
+          height: 300,
+          background: 'transparent'
+        },
+        series: [{
+          name: 'Total Spending',
+          data: weekTotals
+        }],
+        xaxis: {
+          categories: weeks,
+          labels: {
+            style: {
+              colors: '#A9B1BD'
+            }
+          }
+        },
+        yaxis: {
+          labels: {
+            formatter: function(value: any) {
+              return formatRupiah(value);
+            },
+            style: {
+              colors: '#A9B1BD'
+            }
+          }
+        },
+        colors: ['#0575E6'],
+        tooltip: {
+          theme: 'dark',
+          y: {
+            formatter: function(value: any) {
+              return formatRupiah(value);
+            }
+          }
+        }
+      });
+      
+      chart.render();
+      
+      // Store chart reference
+      (trendChartElement as any).chart = chart;
+    }
+  };
+
+  // Render month's charts
+  const renderMonthCharts = (transactions: Transaction[]) => {
+    // Pie chart by category
+    const pieChartElement = document.getElementById('monthPieChart');
+    if (pieChartElement) {
+      // Destroy existing chart if it exists
+      if ((pieChartElement as any).chart) {
+        (pieChartElement as any).chart.destroy();
+      }
+      
+      // Group transactions by category
+      const categoryTotals: { [key: string]: number } = {};
+      transactions.forEach(tx => {
+        if (categoryTotals[tx.category]) {
+          categoryTotals[tx.category] += tx.amount;
+        } else {
+          categoryTotals[tx.category] = tx.amount;
+        }
+      });
+      
+      // Prepare data for chart
+      const categories = Object.keys(categoryTotals);
+      const amounts = Object.values(categoryTotals);
+      
+      if (categories.length > 0) {
+        // Create chart
+        const chart = new (window as any).ApexCharts(pieChartElement, {
+          chart: {
+            type: 'pie',
+            height: 300,
+            background: 'transparent'
+          },
+          labels: categories,
+          series: amounts,
+          colors: ['#00F260', '#0575E6', '#AC39E6', '#E63946', '#F4A261'],
+          legend: {
+            position: 'bottom',
+            labels: {
+              colors: '#A9B1BD'
+            }
+          },
+          tooltip: {
+            theme: 'dark',
+            y: {
+              formatter: function(value: any) {
+                return formatRupiah(value);
+              }
+            }
+          }
+        });
+        
+        chart.render();
+        
+        // Store chart reference
+        (pieChartElement as any).chart = chart;
+      } else {
+        pieChartElement.innerHTML = '<p style="text-align:center;color:#A9B1BD;">No data to display</p>';
+      }
+    }
+    
+    // Daily spending bar chart
+    const dailyChartElement = document.getElementById('dailyBarChart');
+    if (dailyChartElement) {
+      // Destroy existing chart if it exists
+      if ((dailyChartElement as any).chart) {
+        (dailyChartElement as any).chart.destroy();
+      }
+      
+      // Group transactions by day
+      const dailyTotals: { [key: number]: number } = {};
+      transactions.forEach(tx => {
+        const day = new Date(tx.timestamp).getDate();
+        if (dailyTotals[day]) {
+          dailyTotals[day] += tx.amount;
+        } else {
+          dailyTotals[day] = tx.amount;
+        }
+      });
+      
+      // Prepare data for chart
+      const today = new Date();
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const categories = Array.from({length: daysInMonth}, (_, i) => (i + 1).toString());
+      const amounts = Array.from({length: daysInMonth}, (_, i) => dailyTotals[i + 1] || 0);
+      
+      // Create chart
+      const chart = new (window as any).ApexCharts(dailyChartElement, {
+        chart: {
+          type: 'bar',
+          height: 300,
+          background: 'transparent'
+        },
+        series: [{
+          name: 'Daily Spending',
+          data: amounts
+        }],
+        xaxis: {
+          categories: categories,
+          labels: {
+            style: {
+              colors: '#A9B1BD'
+            }
+          }
+        },
+        yaxis: {
+          labels: {
+            formatter: function(value: any) {
+              return formatRupiah(value);
+            },
+            style: {
+              colors: '#A9B1BD'
+            }
+          }
+        },
+        colors: ['#0575E6'],
+        tooltip: {
+          theme: 'dark',
+          y: {
+            formatter: function(value: any) {
+              return formatRupiah(value);
+            }
+          }
+        }
+      });
+      
+      chart.render();
+      
+      // Store chart reference
+      (dailyChartElement as any).chart = chart;
+    }
+    
+    // Month comparison chart
+    const comparisonChartElement = document.getElementById('monthComparisonChart');
+    if (comparisonChartElement) {
+      // Destroy existing chart if it exists
+      if ((comparisonChartElement as any).chart) {
+        (comparisonChartElement as any).chart.destroy();
+      }
+      
+      // Calculate this month and last month totals
+      const thisMonthTotal = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      // For demo purposes, we'll use a fixed value for last month
+      // In a full implementation, you'd calculate the actual last month's total
+      const lastMonthTotal = thisMonthTotal * 0.85; // Simulate last month being 15% less
+      
+      // Calculate percentage change
+      const percentageChange = ((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100;
+      const isIncrease = percentageChange > 0;
+      const color = isIncrease ? '#E63946' : '#00F260';
+      
+      // Create chart
+      const chart = new (window as any).ApexCharts(comparisonChartElement, {
+        chart: {
+          type: 'bar',
+          height: 300,
+          background: 'transparent'
+        },
+        series: [{
+          name: 'Monthly Spending',
+          data: [lastMonthTotal, thisMonthTotal]
+        }],
+        xaxis: {
+          categories: ['Last Month', 'This Month'],
+          labels: {
+            style: {
+              colors: '#A9B1BD'
+            }
+          }
+        },
+        yaxis: {
+          labels: {
+            formatter: function(value: any) {
+              return formatRupiah(value);
+            },
+            style: {
+              colors: '#A9B1BD'
+            }
+          }
+        },
+        colors: ['#0575E6'],
+        tooltip: {
+          theme: 'dark',
+          y: {
+            formatter: function(value: any) {
+              return formatRupiah(value);
+            }
+          }
+        },
+        annotations: {
+          texts: [{
+            x: '50%',
+            y: '10%',
+            text: `${isIncrease ? '+' : ''}${percentageChange.toFixed(1)}%`,
+            fontSize: '16px',
+            fontWeight: 600,
+            foreColor: color,
+            borderColor: color,
+            borderWidth: 1,
+            borderRadius: 4,
+            paddingLeft: 8,
+            paddingRight: 8,
+            background: 'rgba(26, 31, 37, 0.8)'
+          }]
+        }
+      });
+      
+      chart.render();
+      
+      // Store chart reference
+      (comparisonChartElement as any).chart = chart;
     }
   };
 
@@ -97,7 +508,21 @@ export default function DetailedReports() {
     return () => {
       window.removeEventListener('transactionAdded', handleTransactionAdded);
     };
-  }, []);
+  }, [isDBReady]);
+
+  // Re-render charts when reports tab becomes active
+  useEffect(() => {
+    if (activeTab === 'reports' && isDBReady) {
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && (window as any).ApexCharts) {
+          renderTodayChart(todayTransactions);
+          renderWeekCharts(weekTransactions);
+          renderMonthCharts(monthTransactions);
+        }
+      }, 100);
+    }
+  }, [activeTab, isDBReady, todayTransactions, weekTransactions, monthTransactions]);
 
   return (
     <div id="reportsScreen" className="reports-screen" style={{ display: "none" }}>

@@ -30,6 +30,20 @@ export default function Home() {
     updateDashboard();
   }, [isDBReady]);
 
+  // Reload dashboard when a new transaction is added
+  useEffect(() => {
+    const handleTransactionAdded = () => {
+      updateDashboard();
+    };
+    
+    // Listen for transaction updates
+    window.addEventListener('transactionAdded', handleTransactionAdded);
+    
+    return () => {
+      window.removeEventListener('transactionAdded', handleTransactionAdded);
+    };
+  }, [isDBReady]);
+
   // Format amount in Indonesian Rupiah format
   const formatRupiah = (amount: number): string => {
     // Convert to string with 2 decimal places

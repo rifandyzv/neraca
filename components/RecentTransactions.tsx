@@ -73,7 +73,7 @@ export default function RecentTransactions() {
     return () => {
       window.removeEventListener('transactionAdded', handleTransactionAdded);
     };
-  }, []);
+  }, [isDBReady]);
 
   return (
     <div id="recentTransactions" className="recent-transactions">

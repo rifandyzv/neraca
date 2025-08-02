@@ -206,23 +206,29 @@ export default function SparklineChart() {
     return `Rp${withThousands},${decimalPart}`;
   };
 
-  // Update chart when active period changes or DB is ready
+  // Update chart when active period changes, DB is ready, or transactions are added
   useEffect(() => {
     updateChart();
   }, [activePeriod, isDBReady]);
 
-  // Listen for period changes
+  // Listen for period changes and transaction updates
   useEffect(() => {
     const handlePeriodChange = (event: CustomEvent) => {
       setActivePeriod(event.detail);
     };
     
+    const handleTransactionAdded = () => {
+      updateChart();
+    };
+    
     window.addEventListener('periodChange', handlePeriodChange as EventListener);
+    window.addEventListener('transactionAdded', handleTransactionAdded);
     
     return () => {
       window.removeEventListener('periodChange', handlePeriodChange as EventListener);
+      window.removeEventListener('transactionAdded', handleTransactionAdded);
     };
-  }, []);
+  }, [isDBReady]);
 
   return <div id="sparklineChart"></div>;
 }
