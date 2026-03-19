@@ -828,53 +828,236 @@ ul, ol { list-style: none; }
   display: block;
 }
 
-/* Report sections */
-#todayDetailView,
-#weekDetailView,
-#monthDetailView {
+/* ── Report Stats Grid ──────────────────────── */
+
+.rpt-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  margin-bottom: var(--gap);
+}
+
+.rpt-stat-card {
+  background: var(--surface);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rpt-stat-card--full {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--lime);
+}
+
+.rpt-stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gray-2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.rpt-stat-value {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--white);
+}
+
+.rpt-stat-value--large {
+  font-size: 24px;
+  color: var(--lime);
+}
+
+.rpt-stat-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-3);
+}
+
+/* ── Report Sections ───────────────────────── */
+
+.rpt-section {
   margin-bottom: var(--gap);
   border: 1px solid var(--border);
   background: var(--surface);
   padding: var(--gap);
 }
 
-#todayDetailView h3,
-#weekDetailView h3,
-#monthDetailView h3 {
+.rpt-section-title {
   font-family: var(--font-pixel);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--white);
+  color: var(--gray-1);
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin: var(--gap) 0 var(--gap-sm);
-}
-
-#todayTransactionsList,
-#fullTransactionHistory ul {
-  list-style-type: none;
-  padding: 0;
-}
-
-#todayTransactionsList li,
-#fullTransactionHistory ul li {
-  padding: 10px 0;
+  margin-bottom: var(--gap);
+  padding-bottom: var(--gap-sm);
   border-bottom: 1px solid var(--border);
+}
+
+.rpt-chart {
+  width: 100%;
+}
+
+.rpt-empty {
+  text-align: center;
+  padding: var(--gap-lg) var(--gap);
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--gray-1);
-  line-height: 1.6;
+  color: var(--gray-3);
 }
 
-#todayTransactionsList li:last-child,
-#fullTransactionHistory ul li:last-child {
+/* ── Sankey Diagram ────────────────────────── */
+
+.sankey-wrap {
+  width: 100%;
+  overflow: hidden;
+}
+
+.sankey-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.sankey-flow {
+  transition: opacity 0.2s;
+}
+
+.sankey-flow:hover {
+  opacity: 0.9;
+}
+
+.sankey-label-total {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  fill: var(--lime);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.sankey-label-amount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--gray-1);
+}
+
+.sankey-label-cat {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.sankey-label-val {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--gray-2);
+}
+
+/* ── Report Transaction List ───────────────── */
+
+.rpt-tx-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.rpt-tx-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.rpt-tx-item:last-child {
   border-bottom: none;
 }
 
-#fullTransactionHistory {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  padding: var(--gap);
+.rpt-tx-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+
+.rpt-tx-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rpt-tx-cat {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--white);
+}
+
+.rpt-tx-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-2);
+}
+
+.rpt-tx-notes {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gray-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rpt-tx-amount {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--red);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── History Grouped by Date ───────────────── */
+
+.rpt-history {
+  display: flex;
+  flex-direction: column;
+}
+
+.rpt-history-group {
+  margin-bottom: var(--gap-sm);
+}
+
+.rpt-history-date {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0 6px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gray-2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--black);
+  z-index: 1;
+}
+
+.rpt-history-date-total {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--red);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* Chart overrides */
