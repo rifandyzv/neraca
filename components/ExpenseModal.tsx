@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useIndexedDB } from '../hooks/useIndexedDB';
 
 interface Transaction {
@@ -12,6 +12,14 @@ interface Transaction {
   app?: string;
 }
 
+function formatRupiah(amount: number): string {
+  const formatted = parseFloat(amount.toString()).toFixed(2);
+  const parts = formatted.split('.');
+  const withThousands = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (parts[1] === '00') return `Rp${withThousands}`;
+  return `Rp${withThousands},${parts[1]}`;
+}
+
 export default function ExpenseModal() {
   const { isDBReady, addTransaction } = useIndexedDB();
   const [isOpen, setIsOpen] = useState(false);
@@ -20,351 +28,243 @@ export default function ExpenseModal() {
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
   const [showPayWith, setShowPayWith] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('');
+  const toastRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Set default date to today
   useEffect(() => {
-    const today = new Date();
-    const formattedDate = today.toISOString().split('T')[0];
-    setDate(formattedDate);
+    setDate(new Date().toISOString().split('T')[0]);
   }, []);
 
-  // Handle amount input change
+  // Lock body scroll when open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setAmount(value);
-    setShowPayWith(value !== '' && parseFloat(value) > 0);
+    const val = e.target.value;
+    setAmount(val);
+    setShowPayWith(val !== '' && parseFloat(val) > 0);
   };
 
-  // Handle form submission
+  const buildTransaction = (): Omit<Transaction, 'id'> | null => {
+    if (!amount || !category || !date) return null;
+
+    const selectedDate = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    const timestamp = selectedDate.getTime() === today.getTime()
+      ? Date.now()
+      : selectedDate.getTime();
+
+    return {
+      amount: parseFloat(amount),
+      category,
+      timestamp,
+      notes,
+    };
+  };
+
+  const showToast = (message: string) => {
+    if (!toastRef.current) return;
+    toastRef.current.textContent = message;
+    toastRef.current.classList.add('show');
+
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      toastRef.current?.classList.remove('show');
+    }, 2500);
+  };
+
+  const resetForm = () => {
+    setAmount('');
+    setCategory('');
+    setNotes('');
+    setShowPayWith(false);
+    setDate(new Date().toISOString().split('T')[0]);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!isDBReady) {
-      alert('Database is not ready yet');
+    if (!isDBReady) return;
+
+    const tx = buildTransaction();
+    if (!tx) {
+      showToast('Please fill in all required fields');
       return;
     }
-    
-    if (!amount || !category || !date) {
-      alert('Please fill in all required fields');
-      return;
-    }
-    
-    // Create timestamp
-    const selectedDate = new Date(date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    selectedDate.setHours(0, 0, 0, 0);
-    
-    let timestamp: number;
-    if (selectedDate.getTime() === today.getTime()) {
-      // If date is today, use current time
-      timestamp = new Date().getTime();
-    } else {
-      // If date is not today, use start of selected day
-      timestamp = selectedDate.getTime();
-    }
-    
-    // Create transaction object
-    const transaction: Omit<Transaction, 'id'> = {
-      amount: parseFloat(amount),
-      category,
-      timestamp,
-      notes,
-      app: paymentMethod
-    };
-    
+
     try {
-      // Save transaction to IndexedDB
-      await addTransaction(transaction);
-      
-      // Show success message
-      showToast(`Saved ${formatRupiah(transaction.amount)} for ${transaction.category}`);
-      
-      // Dispatch event to notify other components
+      await addTransaction(tx);
+      showToast(`Saved ${formatRupiah(tx.amount)} for ${tx.category}`);
       window.dispatchEvent(new CustomEvent('transactionAdded'));
-      
-      // Close modal
       setIsOpen(false);
-      
-      // Reset form
-      setAmount('');
-      setCategory('');
-      setNotes('');
-      setPaymentMethod('');
-      setShowPayWith(false);
-      
-      // Set date back to today
-      const todayDate = new Date();
-      const formattedDate = todayDate.toISOString().split('T')[0];
-      setDate(formattedDate);
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      alert('Error saving transaction');
+      resetForm();
+    } catch (e) {
+      console.error('Error saving transaction:', e);
+      showToast('Error saving transaction');
     }
   };
 
-  // Handle "Pay With" button click
   const handlePayWith = async (app: string) => {
-    setPaymentMethod(app);
-    
-    if (!isDBReady) {
-      alert('Database is not ready yet');
+    if (!isDBReady) return;
+
+    const tx = buildTransaction();
+    if (!tx) {
+      showToast('Please fill in all required fields');
       return;
     }
-    
-    if (!amount || !category || !date) {
-      alert('Please fill in all required fields');
-      return;
-    }
-    
-    // Create timestamp
-    const selectedDate = new Date(date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    selectedDate.setHours(0, 0, 0, 0);
-    
-    let timestamp: number;
-    if (selectedDate.getTime() === today.getTime()) {
-      // If date is today, use current time
-      timestamp = new Date().getTime();
-    } else {
-      // If date is not today, use start of selected day
-      timestamp = selectedDate.getTime();
-    }
-    
-    // Create transaction object
-    const transaction: Omit<Transaction, 'id'> = {
-      amount: parseFloat(amount),
-      category,
-      timestamp,
-      notes,
-      app
-    };
-    
+
+    tx.app = app;
+
     try {
-      // Save transaction to IndexedDB
-      await addTransaction(transaction);
-      
-      // Show success message
-      showToast(`Saved ${formatRupiah(transaction.amount)} for ${transaction.category} via ${app}`);
-      
-      // Dispatch event to notify other components
+      await addTransaction(tx);
+      showToast(`Saved ${formatRupiah(tx.amount)} via ${app}`);
       window.dispatchEvent(new CustomEvent('transactionAdded'));
-      
-      // Try to open the app (might not work on all browsers/devices)
-      let url: string;
-      switch(app) {
-        case 'gopay':
-          url = `gopay://pay?amount=${amount}&notes=${encodeURIComponent(notes || '')}`;
-          break;
-        case 'jenius':
-          url = `jenius://pay?amount=${amount}&notes=${encodeURIComponent(notes || '')}`;
-          break;
-        case 'bca':
-          url = `bca://pay?amount=${amount}&notes=${encodeURIComponent(notes || '')}`;
-          break;
-        default:
-          alert('Unsupported payment app');
-          return;
-      }
-      
-      try {
-        window.open(url, '_blank');
-      } catch (e) {
-        // Fallback for browsers that block popups
-        alert(`Please manually open ${app} and send ${formatRupiah(parseFloat(amount))}, then return here.`);
-      }
-      
-      // Close modal
-      setIsOpen(false);
-      
-      // Reset form
-      setAmount('');
-      setCategory('');
-      setNotes('');
-      setPaymentMethod('');
-      setShowPayWith(false);
-      
-      // Set date back to today
-      const todayDate = new Date();
-      const formattedDate = todayDate.toISOString().split('T')[0];
-      setDate(formattedDate);
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      alert('Error saving transaction');
-    }
-  };
 
-  // Format amount in Indonesian Rupiah format
-  const formatRupiah = (amount: number): string => {
-    // Convert to string with 2 decimal places
-    const formatted = parseFloat(amount.toString()).toFixed(2);
-    
-    // Split into integer and decimal parts
-    const parts = formatted.split('.');
-    const integerPart = parts[0];
-    const decimalPart = parts[1];
-    
-    // Add thousand separators to integer part
-    const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    
-    // If decimal part is 00, omit it
-    if (decimalPart === '00') {
-      return `Rp${withThousands}`;
-    }
-    
-    // Otherwise, include the decimal part with comma separator
-    return `Rp${withThousands},${decimalPart}`;
-  };
+      const urls: Record<string, string> = {
+        gopay: `gopay://pay?amount=${amount}&notes=${encodeURIComponent(notes || '')}`,
+        jenius: `jenius://pay?amount=${amount}&notes=${encodeURIComponent(notes || '')}`,
+        bca: `bca://pay?amount=${amount}&notes=${encodeURIComponent(notes || '')}`,
+      };
 
-  // Show toast notification
-  const showToast = (message: string) => {
-    // Create toast element
-    const toast = document.createElement('div');
-    toast.textContent = message;
-    toast.style.position = 'fixed';
-    toast.style.bottom = '20px';
-    toast.style.left = '50%';
-    toast.style.transform = 'translateX(-50%)';
-    toast.style.backgroundColor = '#333';
-    toast.style.color = 'white';
-    toast.style.padding = '10px 20px';
-    toast.style.borderRadius = '5px';
-    toast.style.zIndex = '10000';
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    
-    document.body.appendChild(toast);
-    
-    // Fade in
-    setTimeout(() => {
-      toast.style.opacity = '1';
-    }, 10);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => {
-        if (document.body.contains(toast)) {
-          document.body.removeChild(toast);
+      if (urls[app]) {
+        try { window.open(urls[app], '_blank'); } catch {
+          showToast(`Open ${app} manually to complete payment`);
         }
-      }, 300);
-    }, 3000);
+      }
+
+      setIsOpen(false);
+      resetForm();
+    } catch (e) {
+      console.error('Error saving transaction:', e);
+      showToast('Error saving transaction');
+    }
   };
 
   return (
-    <div>
-      {/* Add Expense Button */}
-      <button 
-        id="addExpense" 
-        className="fab"
-        onClick={() => setIsOpen(true)}
-      >
-        <i data-lucide="plus" className="fab-icon"></i>
+    <>
+      {/* FAB */}
+      <button className="fab" onClick={() => setIsOpen(true)} aria-label="Add expense">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
       </button>
 
-      {/* Modal */}
-      {isOpen && (
-        <div className="modal show" style={{ display: 'block' }}>
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>Add Expense</h2>
-              <span className="close" onClick={() => setIsOpen(false)}>&times;</span>
-            </div>
-            <form id="expenseForm" onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label htmlFor="amount">Amount (Rp)</label>
-                <input 
-                  type="number" 
-                  id="amount" 
-                  step="0.01" 
-                  required 
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={handleAmountChange}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="category">Category</label>
-                <select 
-                  id="category" 
-                  required 
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                >
-                  <option value="">Select a category</option>
-                  <option value="Food">Food</option>
-                  <option value="Transport">Transport</option>
-                  <option value="Shopping">Shopping</option>
-                  <option value="Entertainment">Entertainment</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="date">Date</label>
-                <input 
-                  type="date" 
-                  id="date" 
-                  required 
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="notes">Notes (optional)</label>
-                <textarea 
-                  id="notes" 
-                  rows={3}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                ></textarea>
-              </div>
-              {showPayWith && (
-                <div id="payWithSection" style={{ marginTop: '20px' }}>
-                  <h3>Pay with:</h3>
-                  <div className="btn-group">
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary" 
-                      data-app="gopay"
-                      onClick={() => handlePayWith('gopay')}
-                    >
-                      Gopay
-                    </button>
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary" 
-                      data-app="jenius"
-                      onClick={() => handlePayWith('jenius')}
-                    >
-                      Jenius
-                    </button>
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary" 
-                      data-app="bca"
-                      onClick={() => handlePayWith('bca')}
-                    >
-                      BCA
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="btn-group" style={{ marginTop: '20px' }}>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={() => setIsOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">Save</button>
-              </div>
-            </form>
-          </div>
+      {/* Overlay */}
+      <div
+        className={`modal-overlay ${isOpen ? 'show' : ''}`}
+        onClick={() => setIsOpen(false)}
+      />
+
+      {/* Bottom Sheet */}
+      <div className={`bottom-sheet ${isOpen ? 'show' : ''}`}>
+        <div className="sheet-handle" />
+
+        <div className="sheet-header">
+          <h2 className="sheet-title">Add Expense</h2>
+          <button className="sheet-close" onClick={() => setIsOpen(false)}>
+            &times;
+          </button>
         </div>
-      )}
-    </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label className="form-label" htmlFor="amount">Amount</label>
+            <div className="amount-input-wrap">
+              <span className="amount-prefix">Rp</span>
+              <input
+                type="number"
+                id="amount"
+                step="0.01"
+                required
+                inputMode="decimal"
+                placeholder="0"
+                value={amount}
+                onChange={handleAmountChange}
+              />
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="category">Category</label>
+            <select
+              id="category"
+              className="form-select"
+              required
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="">Select category</option>
+              <option value="Food">Food</option>
+              <option value="Transport">Transport</option>
+              <option value="Shopping">Shopping</option>
+              <option value="Entertainment">Entertainment</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="date">Date</label>
+            <input
+              type="date"
+              id="date"
+              className="form-input"
+              required
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="notes">Notes</label>
+            <textarea
+              id="notes"
+              className="form-textarea"
+              rows={2}
+              placeholder="Optional notes..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          {showPayWith && (
+            <div className="pay-with-section">
+              <div className="pay-with-title">Quick Pay</div>
+              <div className="pay-with-row">
+                <button type="button" className="pay-btn" onClick={() => handlePayWith('gopay')}>
+                  GoPay
+                </button>
+                <button type="button" className="pay-btn" onClick={() => handlePayWith('jenius')}>
+                  Jenius
+                </button>
+                <button type="button" className="pay-btn" onClick={() => handlePayWith('bca')}>
+                  BCA
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="form-actions">
+            <button type="button" className="btn-cancel" onClick={() => setIsOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-save">
+              Save
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Toast */}
+      <div ref={toastRef} className="toast" />
+    </>
   );
 }

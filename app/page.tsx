@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Head from "next/head";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Swiper from "../components/Swiper";
 import ExpenseModal from "../components/ExpenseModal";
 import RecentTransactions from "../components/RecentTransactions";
@@ -9,260 +8,202 @@ import DetailedReports from "../components/DetailedReports";
 import SparklineChart from "../components/SparklineChart";
 import { useIndexedDB } from "../hooks/useIndexedDB";
 
+const PERIODS = ['monthly', 'weekly', 'daily'] as const;
+const PERIOD_LABELS = ['Month', 'Week', 'Today'] as const;
+const HERO_LABELS = ["This month's expenses", "This week's expenses", "Today's expenses"] as const;
+const HERO_SUBTITLES = ['spent this month', 'spent this week', 'spent today'] as const;
+
 export default function Home() {
   const { isDBReady, getTransactionsByDateRange } = useIndexedDB();
   const [todayAmount, setTodayAmount] = useState<string>('Rp0');
   const [weekAmount, setWeekAmount] = useState<string>('Rp0');
   const [monthAmount, setMonthAmount] = useState<string>('Rp0');
   const [privacyMode, setPrivacyMode] = useState<boolean>(false);
-  const [activePeriod, setActivePeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [showReports, setShowReports] = useState<boolean>(false);
+  const selectorRef = useRef<HTMLDivElement>(null);
 
-  // Initialize the dashboard
+  const activePeriod = PERIODS[currentIndex];
+  const amounts = [monthAmount, weekAmount, todayAmount];
+
+  // Initialize
   useEffect(() => {
-    // Load privacy mode state from localStorage
-    const savedPrivacyMode = localStorage.getItem('pocketPalPrivacyMode');
-    if (savedPrivacyMode !== null) {
-      setPrivacyMode(JSON.parse(savedPrivacyMode));
-    }
-
-    // Update dashboard
+    const saved = localStorage.getItem('pocketPalPrivacyMode');
+    if (saved !== null) setPrivacyMode(JSON.parse(saved));
     updateDashboard();
   }, [isDBReady]);
 
-  // Reload dashboard when a new transaction is added
+  // Listen for new transactions
   useEffect(() => {
-    const handleTransactionAdded = () => {
-      updateDashboard();
-    };
-    
-    // Listen for transaction updates
-    window.addEventListener('transactionAdded', handleTransactionAdded);
-    
-    return () => {
-      window.removeEventListener('transactionAdded', handleTransactionAdded);
-    };
+    const handler = () => updateDashboard();
+    window.addEventListener('transactionAdded', handler);
+    return () => window.removeEventListener('transactionAdded', handler);
   }, [isDBReady]);
 
-  // Format amount in Indonesian Rupiah format
-  const formatRupiah = (amount: number): string => {
-    // Convert to string with 2 decimal places
-    const formatted = parseFloat(amount.toString()).toFixed(2);
-    
-    // Split into integer and decimal parts
-    const parts = formatted.split('.');
-    const integerPart = parts[0];
-    const decimalPart = parts[1];
-    
-    // Add thousand separators to integer part
-    const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    
-    // If decimal part is 00, omit it
-    if (decimalPart === '00') {
-      return `Rp${withThousands}`;
+  // Load ApexCharts
+  useEffect(() => {
+    if (!document.querySelector('script[src*="apexcharts"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/apexcharts';
+      script.async = true;
+      document.body.appendChild(script);
     }
-    
-    // Otherwise, include the decimal part with comma separator
-    return `Rp${withThousands},${decimalPart}`;
+  }, []);
+
+  const formatRupiah = (amount: number): string => {
+    const formatted = parseFloat(amount.toString()).toFixed(2);
+    const parts = formatted.split('.');
+    const withThousands = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    if (parts[1] === '00') return `Rp${withThousands}`;
+    return `Rp${withThousands},${parts[1]}`;
   };
 
-  // Update dashboard amounts
   const updateDashboard = async () => {
     if (!isDBReady) return;
-    
+
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    
-    // Calculate start of week (Monday) correctly
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    // Adjust to make Monday = 0, Sunday = 6
+    const dayOfWeek = today.getDay();
     const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - adjustedDay);
     startOfWeek.setHours(0, 0, 0, 0);
-    
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
-    
-    const endOfDay = startOfDay + 24 * 60 * 60 * 1000;
-    const endOfWeek = startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000;
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getTime() + 24 * 60 * 60 * 1000;
-    
+    const endOfDay = startOfDay + 86400000;
+    const endOfWeek = startOfWeek.getTime() + 604800000;
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getTime() + 86400000;
+
     try {
-      // Get transactions for each period
-      const todayTransactions = await getTransactionsByDateRange(startOfDay, endOfDay);
-      const weekTransactions = await getTransactionsByDateRange(startOfWeek.getTime(), endOfWeek);
-      const monthTransactions = await getTransactionsByDateRange(startOfMonth, endOfMonth);
-      
-      // Calculate totals
-      const todayTotal = todayTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-      const weekTotal = weekTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-      const monthTotal = monthTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-      
-      setTodayAmount(formatRupiah(todayTotal));
-      setWeekAmount(formatRupiah(weekTotal));
-      setMonthAmount(formatRupiah(monthTotal));
-    } catch (error) {
-      console.error('Error updating dashboard:', error);
+      const [todayTx, weekTx, monthTx] = await Promise.all([
+        getTransactionsByDateRange(startOfDay, endOfDay),
+        getTransactionsByDateRange(startOfWeek.getTime(), endOfWeek),
+        getTransactionsByDateRange(startOfMonth, endOfMonth),
+      ]);
+      setTodayAmount(formatRupiah(todayTx.reduce((s, t) => s + t.amount, 0)));
+      setWeekAmount(formatRupiah(weekTx.reduce((s, t) => s + t.amount, 0)));
+      setMonthAmount(formatRupiah(monthTx.reduce((s, t) => s + t.amount, 0)));
+    } catch (e) {
+      console.error('Error updating dashboard:', e);
     }
   };
 
-  // Toggle privacy mode
+  const handleIndexChange = useCallback((index: number) => {
+    setCurrentIndex(index);
+    window.dispatchEvent(new CustomEvent('periodChange', { detail: PERIODS[index] }));
+  }, []);
+
   const togglePrivacy = () => {
-    const newPrivacyMode = !privacyMode;
-    setPrivacyMode(newPrivacyMode);
-    
-    // Save privacy mode state to localStorage
-    localStorage.setItem('pocketPalPrivacyMode', JSON.stringify(newPrivacyMode));
-    
-    // Update icon
-    const eyeIcon = document.querySelector('#privacyToggle i');
-    if (eyeIcon) {
-      if (newPrivacyMode) {
-        eyeIcon.setAttribute('data-lucide', 'eye-off');
-      } else {
-        eyeIcon.setAttribute('data-lucide', 'eye');
-      }
-      
-      // Re-render icons if lucide is available
-      if (typeof window !== 'undefined' && (window as any).lucide) {
-        (window as any).lucide.createIcons();
-      }
-    }
+    const next = !privacyMode;
+    setPrivacyMode(next);
+    localStorage.setItem('pocketPalPrivacyMode', JSON.stringify(next));
   };
 
-  // Handle slide change
-  const handleSlideChange = (index: number) => {
-    let period: 'daily' | 'weekly' | 'monthly';
-    switch (index) {
-      case 0:
-        period = 'monthly';
-        break;
-      case 1:
-        period = 'weekly';
-        break;
-      case 2:
-        period = 'daily';
-        break;
-      default:
-        period = 'monthly';
-    }
-    
-    setActivePeriod(period);
-    // Dispatch event for sparkline chart
-    window.dispatchEvent(new CustomEvent('periodChange', { detail: period }));
-  };
-
-  // Handle external script loading
-  useEffect(() => {
-    const loadScript = (src: string, onLoadCallback?: () => void) => {
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      if (onLoadCallback) {
-        script.onload = onLoadCallback;
-      }
-      document.body.appendChild(script);
+  // Compute indicator position for segmented control
+  const getIndicatorStyle = () => {
+    const width = 100 / 3;
+    return {
+      left: `calc(${currentIndex * width}% + 4px)`,
+      width: `calc(${width}% - 8px)`,
     };
-    
-    // Load Lucide icons
-    loadScript('https://unpkg.com/lucide@0.259.0/dist/umd/lucide.min.js', () => {
-      if (typeof window !== "undefined" && (window as any).lucide) {
-        (window as any).lucide.createIcons();
-      }
-    });
-    
-    // Load ApexCharts
-    loadScript('https://cdn.jsdelivr.net/npm/apexcharts');
-  }, []);
-
-  // Handle view details button click
-  const handleViewDetails = () => {
-    setShowReports(true);
-    const reportsScreen = document.getElementById('reportsScreen');
-    if (reportsScreen) {
-      reportsScreen.style.display = 'block';
-    }
   };
 
-  // Handle back from reports button click
-  const handleBackFromReports = () => {
-    setShowReports(false);
-    const reportsScreen = document.getElementById('reportsScreen');
-    if (reportsScreen) {
-      reportsScreen.style.display = 'none';
-    }
-  };
-
-  // Add event listener for back button
-  useEffect(() => {
-    const backButton = document.getElementById('backFromReports');
-    if (backButton) {
-      backButton.addEventListener('click', handleBackFromReports);
-    }
-    
-    return () => {
-      if (backButton) {
-        backButton.removeEventListener('click', handleBackFromReports);
-      }
-    };
-  }, []);
+  // Summary cards: show the two periods NOT currently active
+  const summaryCards = PERIODS
+    .map((period, i) => ({ period, label: PERIOD_LABELS[i], amount: amounts[i], index: i }))
+    .filter((_, i) => i !== currentIndex);
 
   return (
     <>
-      <Head>
-        <title>Neraca - Personal Spending Tracker</title>
-      </Head>
-      
-      <header>
-        <img className="icon" src="/icons/icon.svg" alt="PocketPal" height="40" />
-        <button id="privacyToggle" className="privacy-toggle" onClick={togglePrivacy}>
-          <i data-lucide="eye"></i>
+      <header className="app-header">
+        <h1 className="app-logo">neraca</h1>
+        <button className="privacy-btn" onClick={togglePrivacy} aria-label="Toggle privacy">
+          {privacyMode ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          )}
         </button>
       </header>
-      
-      <main>
-        {/* Hero Display Swiper */}
-        <Swiper onSlideChange={handleSlideChange}>
-          <div>
-            <span className="hero-label">THIS MONTH'S EXPENSES</span>
-            <h1 id="monthAmount" className={`hero-amount ${privacyMode ? 'privacy-mode' : ''}`}>{monthAmount}</h1>
-          </div>
-          <div>
-            <span className="hero-label">THIS WEEK'S EXPENSES</span>
-            <h1 id="weekAmount" className={`hero-amount ${privacyMode ? 'privacy-mode' : ''}`}>{weekAmount}</h1>
-          </div>
-          <div>
-            <span className="hero-label">TODAY'S EXPENSES</span>
-            <h1 id="todayAmount" className={`hero-amount ${privacyMode ? 'privacy-mode' : ''}`}>{todayAmount}</h1>
-          </div>
-        </Swiper>
-        
-        {/* Unified Details Panel */}
-        <div className="details-panel">
-          {/* Dynamic Sparkline Chart */}
-          <SparklineChart />
-          
-          {/* Recent Activity Header */}
-          <h3 className="recent-activity-header">Recent Activity</h3>
-          
-          {/* Recent Transactions List */}
-          <RecentTransactions />
-          
-          {/* View Details Button */}
-          <button 
-            id="viewDetailsBtn" 
-            className="details-button"
-            onClick={handleViewDetails}
-          >
-            Full Report & History →
-          </button>
+
+      <main className="app-main">
+        {/* Period Selector */}
+        <div className="period-selector" ref={selectorRef}>
+          {PERIOD_LABELS.map((label, i) => (
+            <button
+              key={label}
+              className={`period-btn ${i === currentIndex ? 'active' : ''}`}
+              onClick={() => handleIndexChange(i)}
+            >
+              {label}
+            </button>
+          ))}
+          <div className="period-indicator" style={getIndicatorStyle()} />
         </div>
-        
-        {/* Expense Modal Component */}
+
+        {/* Hero Amount */}
+        <section className="hero-section">
+          <div className="hero-glow" />
+          <Swiper currentIndex={currentIndex} onIndexChange={handleIndexChange}>
+            {HERO_LABELS.map((label, i) => (
+              <div key={label}>
+                <span className="hero-label">{label}</span>
+                <h2 className={`hero-amount ${privacyMode ? 'privacy-mode' : ''}`}>
+                  {amounts[i]}
+                </h2>
+                <p className="hero-subtitle">{HERO_SUBTITLES[i]}</p>
+              </div>
+            ))}
+          </Swiper>
+        </section>
+
+        {/* Summary Cards */}
+        <div className="summary-row">
+          {summaryCards.map(card => (
+            <button
+              key={card.period}
+              className="summary-card"
+              onClick={() => handleIndexChange(card.index)}
+            >
+              <span className="summary-label">{card.label}</span>
+              <span className={`summary-value ${privacyMode ? 'privacy-mode' : ''}`}>
+                {card.amount}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Sparkline Chart */}
+        <div className="chart-section">
+          <SparklineChart />
+        </div>
+
+        {/* Recent Activity */}
+        <section className="activity-section">
+          <div className="section-header">
+            <h3 className="section-title">Recent</h3>
+            <button className="section-link" onClick={() => {
+              setShowReports(true);
+              const el = document.getElementById('reportsScreen');
+              if (el) el.style.display = 'block';
+            }}>
+              See all
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </div>
+          <RecentTransactions />
+        </section>
+
         <ExpenseModal />
       </main>
-      
-      {/* Reports & History Screen */}
+
       <DetailedReports />
     </>
   );

@@ -12,93 +12,100 @@ interface Transaction {
   app?: string;
 }
 
+const CATEGORY_CONFIG: Record<string, { color: string; letter: string }> = {
+  'Food': { color: '#fb923c', letter: 'F' },
+  'Transport': { color: '#38bdf8', letter: 'T' },
+  'Shopping': { color: '#f472b6', letter: 'S' },
+  'Entertainment': { color: '#a78bfa', letter: 'E' },
+  'Other': { color: '#64748b', letter: 'O' },
+};
+
+function getRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function formatRupiah(amount: number): string {
+  const formatted = parseFloat(amount.toString()).toFixed(2);
+  const parts = formatted.split('.');
+  const withThousands = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (parts[1] === '00') return `Rp${withThousands}`;
+  return `Rp${withThousands},${parts[1]}`;
+}
+
 export default function RecentTransactions() {
   const { isDBReady, getAllTransactions } = useIndexedDB();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  // Format amount in Indonesian Rupiah format
-  const formatRupiah = (amount: number): string => {
-    // Convert to string with 2 decimal places
-    const formatted = parseFloat(amount.toString()).toFixed(2);
-    
-    // Split into integer and decimal parts
-    const parts = formatted.split('.');
-    const integerPart = parts[0];
-    const decimalPart = parts[1];
-    
-    // Add thousand separators to integer part
-    const withThousands = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    
-    // If decimal part is 00, omit it
-    if (decimalPart === '00') {
-      return `Rp${withThousands}`;
-    }
-    
-    // Otherwise, include the decimal part with comma separator
-    return `Rp${withThousands},${decimalPart}`;
-  };
-
-  // Load recent transactions
-  const loadRecentTransactions = async () => {
+  const loadRecent = async () => {
     if (!isDBReady) return;
-    
     try {
-      const allTransactions = await getAllTransactions();
-      // Sort by timestamp descending and take first 3
-      const recent = allTransactions
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 3);
-      setTransactions(recent);
-    } catch (error) {
-      console.error('Error loading recent transactions:', error);
+      const all = await getAllTransactions();
+      setTransactions(all.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5));
+    } catch (e) {
+      console.error('Error loading transactions:', e);
     }
   };
 
-  // Load transactions when DB is ready
   useEffect(() => {
-    if (isDBReady) {
-      loadRecentTransactions();
-    }
+    if (isDBReady) loadRecent();
   }, [isDBReady]);
 
-  // Reload transactions when a new transaction is added
   useEffect(() => {
-    const handleTransactionAdded = () => {
-      loadRecentTransactions();
-    };
-    
-    // Listen for transaction updates
-    window.addEventListener('transactionAdded', handleTransactionAdded);
-    
-    return () => {
-      window.removeEventListener('transactionAdded', handleTransactionAdded);
-    };
+    const handler = () => loadRecent();
+    window.addEventListener('transactionAdded', handler);
+    return () => window.removeEventListener('transactionAdded', handler);
   }, [isDBReady]);
+
+  if (transactions.length === 0) {
+    return (
+      <div className="tx-list">
+        <div className="tx-empty">
+          <div className="tx-empty-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+              <rect x="2" y="5" width="20" height="14" rx="2"/>
+              <line x1="2" y1="10" x2="22" y2="10"/>
+            </svg>
+          </div>
+          <p className="tx-empty-text">No transactions yet</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div id="recentTransactions" className="recent-transactions">
-      {transactions.length === 0 ? (
-        <p className="no-transactions">No transactions yet</p>
-      ) : (
-        transactions.map((tx) => (
-          <div key={tx.id} className="transaction-item">
-            <div className="transaction-details">
-              <div className="transaction-icon">
-                <i data-lucide="circle"></i>
-              </div>
-              <div className="transaction-info">
-                <div className="transaction-name">{tx.category}</div>
-                <div className="transaction-time">
-                  {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
+    <div className="tx-list">
+      {transactions.map((tx) => {
+        const config = CATEGORY_CONFIG[tx.category] || CATEGORY_CONFIG['Other'];
+        return (
+          <div key={tx.id} className="tx-item">
+            <div
+              className="tx-cat-dot"
+              style={{
+                background: `${config.color}18`,
+                color: config.color,
+              }}
+            >
+              {config.letter}
             </div>
-            <div className="transaction-amount">
-              {formatRupiah(tx.amount)}
+            <div className="tx-info">
+              <div className="tx-name">{tx.category}</div>
+              <div className="tx-time">{getRelativeTime(tx.timestamp)}</div>
             </div>
+            <div className="tx-amount">-{formatRupiah(tx.amount)}</div>
           </div>
-        ))
-      )}
+        );
+      })}
     </div>
   );
 }

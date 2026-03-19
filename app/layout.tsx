@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { GeistPixelSquare } from "geist/font/pixel";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font";
 import "./globals.css";
 
 const APP_NAME = "Neraca";
@@ -28,18 +31,17 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#101419",
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" dir="ltr">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.259.0/font/lucide.css" />
-      </head>
+    <html
+      lang="en"
+      dir="ltr"
+      className={`${GeistPixelSquare.variable} ${GeistMono.variable} ${GeistSans.variable}`}
+    >
+      <head />
       <body>{children}</body>
     </html>
   );
