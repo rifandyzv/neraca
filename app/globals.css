@@ -573,7 +573,7 @@ ul, ol { list-style: none; }
   background: var(--black);
   border: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 16px;
   color: var(--white);
   outline: none;
   transition: border-color 0.15s;
@@ -630,7 +630,7 @@ ul, ol { list-style: none; }
   background: none;
   border: none;
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 16px;
   color: var(--white);
   outline: none;
 }
